@@ -1,15 +1,17 @@
 // tweetbar: post to X without the paid API by driving your real, logged-in
 // Google Chrome through AppleScript (one background tab, reused).
-const { app, BrowserWindow, Notification, globalShortcut, ipcMain, screen, shell } = require('electron')
+const { app, BrowserWindow, Notification, dialog, globalShortcut, ipcMain, screen, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const http = require('http')
 const { execFile } = require('child_process')
+const { createDrafter } = require('./drafts')
 
 const HOTKEY = 'CommandOrControl+Shift+X'
 const API_PORT = 4777
+const DRAFT_EVERY_MS = 60 * 60 * 1000
 
-let ui, bar, handle = null
+let ui, bar, drafter, handle = null
 const cacheFile = () => path.join(app.getPath('userData'), 'tweets.json')
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json')
 const settings = {
@@ -295,14 +297,65 @@ function toggleBar() {
 
 ipcMain.handle('init', () => {
   connect()
-  return { tweets: readCache(), hotkey: HOTKEY }
+  return { tweets: readCache(), drafts: drafter.list(), hotkey: HOTKEY }
 })
 ipcMain.handle('post', (_e, text) => post(text).catch(err => ({ error: err.message })))
 ipcMain.handle('refresh', () => (handle ? refresh() : connect()))
 ipcMain.handle('chrome:switch', () => queued(() => askForProfile('Which Chrome window is logged in to X?')).catch(err => send('status', { error: err.message })))
 ipcMain.handle('chrome:pick', (_e, id) => pickChromeWindow(id))
 ipcMain.handle('bar:hide', () => bar.hide())
+ipcMain.handle('drafts:scan', () => runDraftScan({ force: true }))
+ipcMain.handle('drafts:dismiss', (_e, id) => drafter.remove(id))
+ipcMain.handle('drafts:post', (_e, id) => {
+  const d = drafter.get(id)
+  if (!d) return { error: 'Draft not found' }
+  return post(d.text).then(() => { drafter.remove(id); return { ok: true } }, err => ({ error: err.message }))
+})
+ipcMain.handle('repos:list', () => settings.read().draftRepos || [])
+ipcMain.handle('repos:add', async () => {
+  const r = await dialog.showOpenDialog(ui, { title: 'Draft tweets from this repo', properties: ['openDirectory'] })
+  if (r.canceled || !r.filePaths[0]) return settings.read().draftRepos || []
+  const repos = [...new Set([...(settings.read().draftRepos || []), r.filePaths[0]])]
+  settings.write({ draftRepos: repos })
+  return repos
+})
+ipcMain.handle('repos:remove', (_e, repo) => {
+  const repos = (settings.read().draftRepos || []).filter(r => r !== repo)
+  settings.write({ draftRepos: repos })
+  return repos
+})
 ipcMain.handle('bar:height', (_e, h) => bar.setSize(BAR_WIDTH, Math.max(80, Math.min(420, Math.round(h)))))
+
+// --- drafts -------------------------------------------------------------------
+
+function setupDrafter() {
+  // Default allowlist is this app's own repo; add more from the sources panel.
+  if (!settings.read().draftRepos) settings.write({ draftRepos: [__dirname] })
+  drafter = createDrafter({
+    dir: app.getPath('userData'),
+    settings,
+    getContext: () => ({ handle, pastTweets: readCache().slice(0, 15).map(t => t.text) }),
+    onChange: drafts => send('drafts', drafts),
+  })
+}
+
+// At most one nudge a day, and only when you haven't tweeted today.
+function nudge(added) {
+  const today = new Date().toDateString()
+  const tweetedToday = readCache().some(t => t.at && new Date(t.at).toDateString() === today)
+  if (!added || tweetedToday || settings.read().lastNudge === today || ui.isFocused() || !Notification.isSupported()) return
+  settings.write({ lastNudge: today })
+  const n = new Notification({ title: 'You shipped today', body: `${added} tweet draft${added > 1 ? 's' : ''} ready from your commits.`, silent: true })
+  n.on('click', () => { ui.show(); ui.focus() })
+  n.show()
+}
+
+function runDraftScan(opts) {
+  send('drafting', true)
+  return drafter.scan(opts)
+    .then(added => { nudge(added); return { added } }, err => ({ error: err.message }))
+    .finally(() => send('drafting', false))
+}
 
 // --- local API for agents (curl / Claude Code) --------------------------------
 // Bound to 127.0.0.1 and rejects any request carrying an Origin header, so a web
@@ -323,15 +376,30 @@ function startApi() {
       })
       return
     }
-    reply(404, { error: 'GET /tweets or POST /tweet' })
+    if (req.method === 'POST' && req.url === '/draft') {
+      let body = ''
+      req.on('data', c => { body += c; if (body.length > 1e5) req.destroy() })
+      req.on('end', () => {
+        let data
+        try { data = JSON.parse(body) } catch { return reply(400, { error: 'send JSON {"text": "...", "source": "..."}' }) }
+        if (!String(data.text || '').trim()) return reply(400, { error: 'empty draft' })
+        drafter.add(data.text, data.source || 'agent')
+        reply(200, { ok: true })
+      })
+      return
+    }
+    reply(404, { error: 'GET /tweets, POST /tweet, or POST /draft' })
   }).on('error', err => send('status', { error: `API port ${API_PORT}: ${err.message}` }))
     .listen(API_PORT, '127.0.0.1')
 }
 
 app.whenReady().then(() => {
+  setupDrafter()
   createWindow()
   createBar()
   startApi()
+  setTimeout(() => runDraftScan(), 15000)
+  setInterval(() => runDraftScan(), DRAFT_EVERY_MS)
   globalShortcut.register(HOTKEY, toggleBar)
 })
 

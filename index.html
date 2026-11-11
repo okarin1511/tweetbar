@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src data:; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline'">
 <title>tweetbar</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -41,9 +41,14 @@
   header {
     -webkit-app-region: drag; flex: none;
     padding: 50px 28px 18px var(--spine);
-    display: flex; align-items: flex-end; gap: 16px;
+    display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px;
     border-bottom: 1px solid var(--hair);
   }
+  .tools { flex-basis: 100%; display: flex; gap: 18px; margin-top: 4px; }
+  .tools button { -webkit-app-region: no-drag; color: var(--faint); font: 500 10.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; padding: 4px 0; }
+  .tools button:hover { color: var(--paper); }
+  .tools button.on { color: var(--acid); }
+  .tools .sp { flex: 1; }
   .who { flex: 1; min-width: 0; }
   .who small { display: block; font: 500 10.5px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin-bottom: 8px; }
   .who h1 { margin: 0; font: 650 clamp(20px, 4.2vw, 30px)/1.05 var(--sans); letter-spacing: -.035em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -52,9 +57,6 @@
   .stat b { display: block; font: 600 22px/1 var(--sans); letter-spacing: -.03em; font-variant-numeric: tabular-nums; margin-bottom: 6px; }
   .stat span { font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
   .stat.hot b { color: var(--acid); }
-  #refreshBtn { -webkit-app-region: no-drag; color: var(--dim); font: 500 10.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; padding: 6px 0 4px; }
-  #refreshBtn:hover { color: var(--paper); }
-  #refreshBtn.spin { color: var(--acid); }
 
   /* ------------------------------------------------------------- thread */
   #scroll { flex: 1; overflow-y: auto; position: relative; scroll-behavior: smooth; }
@@ -86,6 +88,21 @@
   .entry.pending .meta { color: var(--acid); }
   .entry.fresh::before { background: var(--acid); border-color: var(--acid); box-shadow: 0 0 14px var(--acid); }
   .entry.fresh .text { animation: flash 1.4s ease-out; }
+  /* ghost drafts: suggestions from your commits, waiting for a yes */
+  .day.drafts { color: var(--acid); }
+  .entry.ghost { outline: none; }
+  .entry.ghost::before { background: transparent; border: 1px dashed var(--acid); }
+  .entry.ghost .text { color: rgba(242, 239, 232, .55); transition: color .15s; }
+  .entry.ghost:hover .text, .entry.ghost:focus .text { color: var(--paper); }
+  .entry.ghost:focus::before { background: var(--acid); }
+  .entry.ghost .meta { opacity: 1; }
+  .entry.ghost .acts { display: flex; gap: 14px; margin-left: auto; }
+  .entry.ghost .acts button { font: 500 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+  .entry.ghost .acts button:hover { color: var(--paper); }
+  .entry.ghost .acts .go { color: var(--acid); }
+  .entry.ghost .acts .go:hover { color: var(--paper); }
+  .entry.ghost:not(:hover):not(:focus) .acts button:not(.go) { opacity: 0; }
+
   .empty { padding: 60px 0 30px; }
   .empty h2 { margin: 0 0 8px; font: 650 34px/1.05 var(--sans); letter-spacing: -.035em; }
   .empty p { margin: 0; color: var(--dim); }
@@ -144,8 +161,14 @@
   .picker .win:disabled { opacity: .35; cursor: default; }
   .picker .win span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .picker .win em { font: 400 11px/1 var(--mono); font-style: normal; color: var(--faint); }
-  .hdr-btn { -webkit-app-region: no-drag; color: var(--dim); font: 500 10.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; padding: 6px 0 4px; }
-  .hdr-btn:hover { color: var(--paper); }
+  .picker .repo { display: flex; align-items: center; gap: 12px; margin-top: 8px; padding: 12px 16px; border: 1px solid var(--hair); border-radius: 12px; }
+  .picker .repo div { flex: 1; min-width: 0; }
+  .picker .repo b { display: block; font-weight: 600; }
+  .picker .repo i { display: block; font: 400 11px/1.4 var(--mono); font-style: normal; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .picker .repo button, .picker .row-btns button { font: 500 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+  .picker .repo button:hover, .picker .row-btns button:hover { color: var(--paper); }
+  .picker .row-btns { display: flex; gap: 22px; margin-top: 22px; }
+  .picker .row-btns .go { color: var(--acid); }
 
   @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
   @keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(200, 245, 58, .15); } }
@@ -181,6 +204,7 @@
     <div class="stat"><b id="today">0</b><span>today</span></div>
     <div class="stat"><b id="last">—</b><span>last ship</span></div>
   </div>
+  <nav class="tools" id="tools"></nav>
 </header>
 
 <div id="scroll"><div class="thread" id="thread"></div></div>
@@ -201,7 +225,8 @@
   const isBar = location.hash === '#bar'
   const box = $('box'), send = $('send'), thread = $('thread'), scroller = $('scroll')
   const LIMIT = 280, CIRC = 56.55, DRAFT_KEY = isBar ? 'draft:bar' : 'draft:log'
-  let tweets = [], live = [], handle = null
+  let tweets = [], live = [], drafts = [], handle = null
+  const postingDrafts = new Set()
 
   if (isBar) document.body.classList.add('bar')
 
@@ -267,8 +292,51 @@
       if (t.url) { const a = document.createElement('a'); a.href = t.url; a.target = '_blank'; a.textContent = 'open on x ↗'; meta.append(a) }
       el.append(text, meta); thread.append(el)
     }
+    renderDrafts()
     renderStats()
     if (atBottom || live.length) scroller.scrollTop = scroller.scrollHeight
+  }
+
+  // Ghost entries at the tip of the thread. ↵ post · e edit · x dismiss · ↑↓ move
+  function renderDrafts() {
+    const shown = drafts.filter(d => !postingDrafts.has(d.id))
+    if (isBar || !shown.length) return
+    thread.querySelector('.empty')?.remove()
+    const h = document.createElement('div'); h.className = 'day drafts'
+    h.textContent = shown.length === 1 ? 'Draft from your work' : shown.length + ' drafts from your work'
+    thread.append(h)
+    for (const d of shown) {
+      const el = document.createElement('div'); el.className = 'entry ghost'; el.tabIndex = 0
+      const text = document.createElement('div'); text.className = 'text'; text.textContent = d.text
+      const meta = document.createElement('div'); meta.className = 'meta'
+      const src = document.createElement('span'); src.textContent = 'from ' + d.source + ' · ' + ago(d.at)
+      const acts = document.createElement('span'); acts.className = 'acts'
+      const mk = (label, cls, fn) => { const b = document.createElement('button'); b.textContent = label; if (cls) b.className = cls; b.onclick = e => { e.stopPropagation(); fn() }; acts.append(b) }
+      mk('dismiss', '', () => dismissDraft(d))
+      mk('edit', '', () => editDraft(d))
+      mk('post ↵', 'go', () => postDraft(d))
+      meta.append(src, acts)
+      el.append(text, meta)
+      el.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); postDraft(d) }
+        else if (e.key === 'e') { e.preventDefault(); editDraft(d) }
+        else if (e.key === 'x' || e.key === 'Backspace') { e.preventDefault(); dismissDraft(d) }
+        else if (e.key === 'ArrowDown') { e.preventDefault(); (el.nextElementSibling || box).focus() }
+        else if (e.key === 'ArrowUp' && el.previousElementSibling?.classList.contains('ghost')) { e.preventDefault(); el.previousElementSibling.focus() }
+      })
+      thread.append(el)
+    }
+  }
+
+  function postDraft(d) {
+    if (!handle) return status('Not connected to X yet', true)
+    postingDrafts.add(d.id); render()
+    tb.postDraft(d.id).then(r => { postingDrafts.delete(d.id); if (r?.error) render() })
+  }
+  function dismissDraft(d) { drafts = drafts.filter(x => x.id !== d.id); render(); tb.dismissDraft(d.id); box.focus() }
+  function editDraft(d) {
+    box.value = d.text; update(); dismissDraft(d)
+    box.focus(); box.setSelectionRange(box.value.length, box.value.length)
   }
 
   // ---- composer
@@ -301,6 +369,7 @@
   box.addEventListener('keydown', e => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ship() }
     if (e.key === 'Escape') isBar ? tb.hideBar() : box.blur()
+    if (e.key === 'ArrowUp' && !box.value && !isBar) { const g = thread.querySelectorAll('.ghost'); if (g.length) { e.preventDefault(); g[g.length - 1].focus() } }
   })
   send.onclick = ship
   tb.on('focus', () => { box.focus(); update() })
@@ -322,13 +391,13 @@
     })
     tb.on('failed', ({ text, error }) => {
       live = live.filter(l => !(l.text === text && l.state === 'pending'))
-      if (!box.value.trim()) { box.value = text; update() }
+      if (!box.value.trim() && !drafts.some(d => d.text === text)) { box.value = text; update() }
       status(error, true); render()
     })
     tb.on('tweets', t => {
       tweets = t
       live = live.filter(l => l.state === 'pending')
-      $('refreshBtn')?.classList.remove('spin')
+      $('refreshBtn')?.classList.remove('on')
       render()
     })
     tb.on('status', s => {
@@ -339,9 +408,46 @@
       update()
     })
 
-    const r = document.createElement('button'); r.id = 'refreshBtn'; r.textContent = 'sync'
-    r.onclick = () => { r.classList.add('spin'); status(''); tb.refresh() }
-    document.querySelector('.stats').append(r)
+    const tool = (label, fn) => { const b = document.createElement('button'); b.textContent = label; b.onclick = fn; $('tools').append(b); return b }
+    const draftBtn = tool('draft from my work', () => { status(''); tb.scanDrafts().then(r => {
+      if (r?.error) status(r.error, true)
+      else status(r.added ? r.added + ' new draft' + (r.added > 1 ? 's' : '') : 'nothing new worth tweeting in the last 24h')
+    }) })
+    tool('sources', () => openSources())
+    $('tools').append(Object.assign(document.createElement('span'), { className: 'sp' }))
+    const r = tool('sync', () => { r.classList.add('on'); status(''); tb.refresh() }); r.id = 'refreshBtn'
+    tool('profile', () => tb.switchProfile())
+
+    tb.on('drafting', on => { draftBtn.classList.toggle('on', on); draftBtn.textContent = on ? 'drafting…' : 'draft from my work' })
+    tb.on('drafts', d => {
+      const grew = d.length > drafts.length
+      drafts = d; render()
+      if (grew) scroller.scrollTop = scroller.scrollHeight
+    })
+
+    // Which repos the drafter may read. Everything else stays invisible to it.
+    async function openSources() {
+      document.querySelector('.picker')?.remove()
+      const p = document.createElement('div'); p.className = 'picker'
+      p.innerHTML = '<small>draft sources</small><h3>Repos tweetbar may read</h3><p>New commits here get turned into tweet drafts. Only add work you’re happy to talk about in public — keep company code out.</p><div class="list"></div><div class="row-btns"><button class="add go">+ add repo</button><button class="done">done</button></div>'
+      const draw = repos => {
+        const list = p.querySelector('.list'); list.replaceChildren()
+        if (!repos.length) list.innerHTML = '<p>No repos yet.</p>'
+        for (const repo of repos) {
+          const row = document.createElement('div'); row.className = 'repo'
+          const info = document.createElement('div')
+          info.append(Object.assign(document.createElement('b'), { textContent: repo.split('/').pop() }), Object.assign(document.createElement('i'), { textContent: repo }))
+          const rm = document.createElement('button'); rm.textContent = 'remove'
+          rm.onclick = async () => draw(await tb.removeRepo(repo))
+          row.append(info, rm); list.append(row)
+        }
+      }
+      p.querySelector('.add').onclick = async () => draw(await tb.addRepo())
+      p.querySelector('.done').onclick = () => p.remove()
+      p.addEventListener('keydown', e => { if (e.key === 'Escape') p.remove() })
+      draw(await tb.listRepos())
+      document.body.append(p)
+    }
 
     // Pick which Chrome window (= profile) is logged in to X.
     tb.on('pick', ({ reason, windows }) => {
@@ -362,11 +468,8 @@
       document.body.append(p)
     })
 
-    const sw = document.createElement('button'); sw.className = 'hdr-btn'; sw.textContent = 'profile'
-    sw.onclick = () => tb.switchProfile()
-    document.querySelector('.stats').append(sw)
 
-    tb.init().then(res => { tweets = res.tweets; render(); box.focus() })
+    tb.init().then(res => { tweets = res.tweets; drafts = res.drafts; render(); box.focus() })
     setInterval(renderStats, 60000)
   }
 </script>
