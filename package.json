@@ -4,9 +4,55 @@
   "private": true,
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --mac"
   },
   "devDependencies": {
-    "electron": "^45.3.0"
+    "electron": "^45.3.0",
+    "electron-builder": "^26.18.0"
+  },
+  "productName": "tweetbar",
+  "description": "Post to X from a hotkey through your own Chrome, with drafts written from your commits",
+  "author": "Aseem Khandekar",
+  "build": {
+    "appId": "com.aseemk.tweetbar",
+    "productName": "tweetbar",
+    "files": [
+      "main.js",
+      "preload.js",
+      "drafts.js",
+      "index.html",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "identity": "-",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "tweetbar drives Google Chrome to post to X and read your timeline, using the account you are already signed in to."
+      },
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "tweetbar"
+    }
   }
 }

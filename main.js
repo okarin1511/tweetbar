@@ -329,8 +329,9 @@ ipcMain.handle('bar:height', (_e, h) => bar.setSize(BAR_WIDTH, Math.max(80, Math
 // --- drafts -------------------------------------------------------------------
 
 function setupDrafter() {
-  // Default allowlist is this app's own repo; add more from the sources panel.
-  if (!settings.read().draftRepos) settings.write({ draftRepos: [__dirname] })
+  // Default allowlist is this app's own repo when run from source; the packaged
+  // app starts empty and you add repos from the sources panel.
+  if (!settings.read().draftRepos) settings.write({ draftRepos: app.isPackaged ? [] : [__dirname] })
   drafter = createDrafter({
     dir: app.getPath('userData'),
     settings,
