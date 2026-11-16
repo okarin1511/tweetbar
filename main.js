@@ -11,7 +11,7 @@ const HOTKEY = 'CommandOrControl+Shift+X'
 const API_PORT = 4777
 const DRAFT_EVERY_MS = 60 * 60 * 1000
 
-let ui, bar, drafter, handle = null
+let ui, bar, drafter, handle = null, quitting = false
 const cacheFile = () => path.join(app.getPath('userData'), 'tweets.json')
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json')
 const settings = {
@@ -272,6 +272,8 @@ function createWindow() {
   })
   openLinksExternally(ui)
   ui.loadFile('index.html')
+  // Closing hides instead of destroying, so the dock icon and notifications can bring it back.
+  ui.on('close', e => { if (!quitting) { e.preventDefault(); ui.hide() } })
 }
 
 // The quick bar: a floating Spotlight-style composer summoned by the hotkey.
@@ -405,6 +407,7 @@ app.whenReady().then(() => {
 })
 
 app.on('activate', () => ui && ui.show())
+app.on('before-quit', () => { quitting = true })
 app.on('before-quit', () => { app.isQuitting = true })
 app.on('will-quit', () => globalShortcut.unregisterAll())
 app.on('window-all-closed', () => {}) // stay alive in the dock for the hotkey
