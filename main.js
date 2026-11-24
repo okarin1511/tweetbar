@@ -1,5 +1,5 @@
 // tweetbar: post to X without the paid API by driving your real, logged-in
-// Google Chrome through AppleScript (one background tab, reused).
+// Google Chrome through Apple Events (one background tab, reused).
 const { app, BrowserWindow, Notification, dialog, globalShortcut, ipcMain, screen, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
@@ -26,75 +26,73 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 let chain = Promise.resolve()
 const queued = fn => (chain = chain.catch(() => {}).then(fn))
 
-function osa(script, ...args) {
+// Other tools (Remotion, Puppeteer, Playwright) launch hidden copies of Chrome,
+// and scripting "Google Chrome" by name can reach one of those instead of yours.
+// So find your own Chrome's pid and script that process directly.
+let chromePid = 0
+const REAL_CHROME = /\/Google Chrome\.app\/Contents\/MacOS\/Google Chrome( |$)/
+const AUTOMATED_CHROME = /--(headless|enable-automation|remote-debugging-port|remote-debugging-pipe)/
+
+async function realChromePid() {
+  if (chromePid) try { process.kill(chromePid, 0); return chromePid } catch {}
+  const ps = await new Promise((resolve, reject) =>
+    execFile('ps', ['-axo', 'pid=,command='], { maxBuffer: 1e7 }, (err, out) => (err ? reject(err) : resolve(out))))
+  const line = ps.split('\n').find(l => REAL_CHROME.test(l) && !AUTOMATED_CHROME.test(l))
+  if (!line) throw new Error('Open Google Chrome first')
+  chromePid = Number(line.trim().split(' ')[0])
+  return chromePid
+}
+
+// Runs a JavaScript for Automation script whose run() gets (chrome, ...args).
+async function osa(script, ...args) {
+  const pid = await realChromePid()
+  const src = `function run([pid, ...args]) { return (${script})(Application(Number(pid)), ...args) }`
   return new Promise((resolve, reject) => {
-    execFile('osascript', ['-e', script, ...args], (err, out, errOut) => {
+    execFile('osascript', ['-l', 'JavaScript', '-e', src, String(pid), ...args], (err, out, errOut) => {
       if (!err) return resolve(out.trim())
       const msg = String(errOut || err.message)
       if (msg.includes('turned off')) return reject(new Error('In Chrome, turn on View → Developer → Allow JavaScript from Apple Events'))
       if (msg.includes('-1743')) return reject(new Error('Allow tweetbar to control Chrome: System Settings → Privacy & Security → Automation'))
-      reject(new Error(msg.replace(/^.*execution error: /s, '').trim()))
+      if (msg.includes("can't be found")) chromePid = 0
+      reject(new Error(msg.replace(/^.*execution error: (Error: )*/s, '').replace(/ \(-\d+\)$/, '').trim()))
     })
   })
 }
 
-// Chrome's AppleScript can't pick the profile for a new window, but a tab
+// Chrome's scripting can't pick the profile for a new window, but a tab
 // always belongs to its window's profile. So you pick one of your windows that
 // is logged in to X, and we add one background tab at its end. That tab's id
 // is saved and reused across reloads and restarts.
 const NEED_PROFILE = 'NEED_PROFILE'
 
-const GOTO = `on run argv
-  set winId to (item 1 of argv) as integer
-  set tabId to (item 2 of argv) as integer
-  set theUrl to item 3 of argv
-  set sourceId to (item 4 of argv) as integer
-  tell application "Google Chrome"
-    try
-      set URL of tab id tabId of window id winId to theUrl
-      return (winId as text) & "," & tabId
-    end try
-    if not (exists window id sourceId) then error "${NEED_PROFILE}"
-    set w to window id sourceId
-    set prevIdx to active tab index of w
-    set t to make new tab at end of tabs of w with properties {URL:theUrl}
-    set newTabId to id of t
-    set active tab index of w to prevIdx
-    return (sourceId as text) & "," & newTabId
-  end tell
-end run`
+const GOTO = `(c, winId, tabId, url, sourceId) => {
+  try {
+    c.windows.byId(Number(winId)).tabs.byId(Number(tabId)).url = url
+    return winId + ',' + tabId
+  } catch (e) {}
+  const w = c.windows.byId(Number(sourceId))
+  if (!w.exists()) throw new Error('${NEED_PROFILE}')
+  const prev = w.activeTabIndex()
+  const t = c.Tab({ url })
+  w.tabs.push(t)
+  const id = t.id()
+  w.activeTabIndex = prev
+  return sourceId + ',' + id
+}`
 
-const EXEC = `on run argv
-  tell application "Google Chrome" to execute tab id ((item 2 of argv) as integer) of window id ((item 1 of argv) as integer) javascript (item 3 of argv)
-end run`
+const EXEC = `(c, winId, tabId, js) => c.execute(c.windows.byId(Number(winId)).tabs.byId(Number(tabId)), { javascript: js })`
 
-const CLOSE_TAB = `on run argv
-  tell application "Google Chrome" to close tab id ((item 2 of argv) as integer) of window id ((item 1 of argv) as integer)
-end run`
+const CLOSE_TAB = `(c, winId, tabId) => { c.windows.byId(Number(winId)).tabs.byId(Number(tabId)).close() }`
 
 // Lists your windows and whether each one's profile allows scripting.
-// (Inside a Chrome tell block "tab" means a browser tab, hence character id 9.)
-const LIST_WINDOWS = `set sep to character id 9
-tell application "Google Chrome"
-  set out to ""
-  repeat with w in windows
-    set ok to "1"
-    try
-      execute active tab of w javascript "1"
-    on error errMsg
-      if errMsg contains "turned off" then set ok to "0"
-    end try
-    set out to out & (id of w) & sep & ok & sep & (count of tabs of w) & sep & (title of active tab of w) & linefeed
-  end repeat
-  return out
-end tell`
+const LIST_WINDOWS = `c => JSON.stringify(c.windows().map(w => {
+  let scriptable = true
+  try { c.execute(w.activeTab(), { javascript: '1' }) } catch (e) { if (/turned off/.test(e.message)) scriptable = false }
+  return { id: w.id(), scriptable, tabs: w.tabs.length, title: w.activeTab().title() }
+}))`
 
 async function listChromeWindows() {
-  const out = await osa(LIST_WINDOWS)
-  return out.split('\n').filter(Boolean).map(line => {
-    const [id, ok, tabs, ...title] = line.split('\t')
-    return { id: Number(id), scriptable: ok === '1', tabs: Number(tabs), title: title.join('\t') }
-  })
+  return JSON.parse((await osa(LIST_WINDOWS)) || '[]').map(w => ({ ...w, id: Number(w.id) }))
 }
 
 const tabRef = () => settings.read().tab || { win: 0, tab: 0 }
@@ -305,6 +303,7 @@ ipcMain.handle('post', (_e, text) => post(text).catch(err => ({ error: err.messa
 ipcMain.handle('refresh', () => (handle ? refresh() : connect()))
 ipcMain.handle('chrome:switch', () => queued(() => askForProfile('Which Chrome window is logged in to X?')).catch(err => send('status', { error: err.message })))
 ipcMain.handle('chrome:pick', (_e, id) => pickChromeWindow(id))
+ipcMain.handle('chrome:windows', () => listChromeWindows())
 ipcMain.handle('bar:hide', () => bar.hide())
 ipcMain.handle('drafts:scan', () => runDraftScan({ force: true }))
 ipcMain.handle('drafts:dismiss', (_e, id) => drafter.remove(id))
@@ -325,6 +324,12 @@ ipcMain.handle('repos:remove', (_e, repo) => {
   const repos = (settings.read().draftRepos || []).filter(r => r !== repo)
   settings.write({ draftRepos: repos })
   return repos
+})
+ipcMain.handle('github:status', () => drafter.githubStatus())
+ipcMain.handle('github:toggle', (_e, on) => {
+  settings.write({ githubOn: Boolean(on) })
+  if (on) runDraftScan()
+  return drafter.githubStatus()
 })
 ipcMain.handle('bar:height', (_e, h) => bar.setSize(BAR_WIDTH, Math.max(80, Math.min(420, Math.round(h)))))
 

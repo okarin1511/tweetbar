@@ -153,6 +153,7 @@
   .picker small { font: 500 10.5px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--acid); }
   .picker h3 { margin: 10px 0 6px; font: 650 26px/1.1 var(--sans); letter-spacing: -.03em; }
   .picker p { margin: 0 0 22px; color: var(--dim); }
+  .picker .hint { margin: 18px 0 0; font-size: 13px; color: var(--faint); }
   .picker .win {
     display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; margin-top: 8px;
     padding: 14px 16px; border: 1px solid var(--hair); border-radius: 12px; transition: border-color .15s, background .15s;
@@ -429,7 +430,7 @@
     async function openSources() {
       document.querySelector('.picker')?.remove()
       const p = document.createElement('div'); p.className = 'picker'
-      p.innerHTML = '<small>draft sources</small><h3>Repos tweetbar may read</h3><p>New commits here get turned into tweet drafts. Only add work you’re happy to talk about in public — keep company code out.</p><div class="list"></div><div class="row-btns"><button class="add go">+ add repo</button><button class="done">done</button></div>'
+      p.innerHTML = '<small>draft sources</small><h3>What tweetbar may read</h3><p>New commits here get turned into tweet drafts. Only add work you’re happy to talk about in public — keep company code out.</p><div class="gh repo"><div><b>GitHub</b><i></i></div><button></button></div><div class="list"></div><div class="row-btns"><button class="add go">+ add repo</button><button class="done">done</button></div>'
       const draw = repos => {
         const list = p.querySelector('.list'); list.replaceChildren()
         if (!repos.length) list.innerHTML = '<p>No repos yet.</p>'
@@ -442,6 +443,15 @@
           row.append(info, rm); list.append(row)
         }
       }
+      // Your commits in repos your personal GitHub account owns; org repos are skipped.
+      const drawGithub = ({ on, login, error }) => {
+        p.querySelector('.gh i').textContent = !on ? 'off'
+          : error ? error
+          : (login ? '@' + login + ' · ' : '') + 'repos you own, public and private · org repos skipped'
+        const b = p.querySelector('.gh button'); b.textContent = on ? 'turn off' : 'turn on'
+        b.onclick = async () => drawGithub(await tb.toggleGithub(!on))
+      }
+      drawGithub(await tb.githubStatus())
       p.querySelector('.add').onclick = async () => draw(await tb.addRepo())
       p.querySelector('.done').onclick = () => p.remove()
       p.addEventListener('keydown', e => { if (e.key === 'Escape') p.remove() })
@@ -449,22 +459,35 @@
       document.body.append(p)
     }
 
-    // Pick which Chrome window (= profile) is logged in to X.
+    // Pick which Chrome window (= profile) is logged in to X. The list refreshes
+    // while open, so a window you open in Chrome shows up without a restart.
     tb.on('pick', ({ reason, windows }) => {
       document.querySelector('.picker')?.remove()
       const p = document.createElement('div'); p.className = 'picker'
-      p.innerHTML = '<small>connect chrome</small><h3></h3><p>tweetbar adds one background tab at the end of that window and uses your existing X login. Nothing else opens.</p>'
+      p.innerHTML = '<small>connect chrome</small><h3></h3><p>tweetbar adds one background tab at the end of that window and uses your existing X login. Nothing else opens.</p><div class="wins"></div><p class="hint"></p>'
       p.querySelector('h3').textContent = reason
-      if (!windows.length) p.querySelector('p').textContent = 'No Chrome windows are open. Open Chrome, log in to x.com, then hit sync.'
-      for (const w of windows) {
-        const b = document.createElement('button'); b.className = 'win'
-        const t = document.createElement('span'); t.textContent = w.title || 'Untitled'
-        const n = document.createElement('em'); n.textContent = w.tabs + (w.tabs === 1 ? ' tab' : ' tabs')
-        b.append(t, n)
-        if (!w.scriptable) { b.disabled = true; n.textContent = 'scripting off in this profile' }
-        b.onclick = () => { p.remove(); $('sub').textContent = 'connecting to chrome'; status(''); tb.pickWindow(w.id) }
-        p.append(b)
+      const list = p.querySelector('.wins'), hint = p.querySelector('.hint')
+      const show = windows => {
+        list.replaceChildren(...windows.map(w => {
+          const b = document.createElement('button'); b.className = 'win'
+          const t = document.createElement('span'); t.textContent = w.title || 'Untitled'
+          const n = document.createElement('em'); n.textContent = w.tabs + (w.tabs === 1 ? ' tab' : ' tabs')
+          b.append(t, n)
+          if (!w.scriptable) { b.disabled = true; n.textContent = 'scripting off in this profile' }
+          b.onclick = () => { clearInterval(poll); p.remove(); $('sub').textContent = 'connecting to chrome'; status(''); tb.pickWindow(w.id) }
+          return b
+        }))
+        hint.textContent = !windows.length
+          ? 'No Chrome windows are open. Open a window in the Chrome profile that’s logged in to X; it will appear here.'
+          : windows.some(w => w.scriptable)
+            ? 'Don’t see it? Open a window in the Chrome profile that’s logged in to X; it will appear here.'
+            : 'In the Chrome profile that’s logged in to X, open a window and turn on View → Developer → Allow JavaScript from Apple Events.'
       }
+      const poll = setInterval(() => {
+        if (!p.isConnected) return clearInterval(poll)
+        tb.listWindows().then(show).catch(() => {})
+      }, 2000)
+      show(windows)
       document.body.append(p)
     })
 

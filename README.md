@@ -24,7 +24,7 @@ tweetbar skips both. It drives the **Google Chrome you're already signed in to**
 
 - **Quick bar.** ⌘⇧X from any app opens a Spotlight-style composer. ⌘↵ posts, and the bar disappears.
 - **Build log.** The main window shows only *your* tweets as a timeline, with your day streak, today's count, and time since your last ship.
-- **Drafts from your work.** It reads new commits in the repos you choose and has Claude write tweet drafts in your voice, based on your past tweets. Drafts appear as ghost entries in the log. Press ↵ to post, `e` to edit, `x` to dismiss. Nothing posts without you.
+- **Drafts from your work.** It reads your new commits on GitHub and in the local repos you choose, and has Claude write tweet drafts in your voice, based on your past tweets. Drafts appear as ghost entries in the log. Press ↵ to post, `e` to edit, `x` to dismiss. Nothing posts without you.
 - **Agent API.** A local HTTP endpoint lets scripts and coding agents read your tweets, queue drafts, or post.
 
 <p align="center"><img src="docs/screenshot.png" alt="The build log with drafts generated from commits" width="460"></p>
@@ -43,13 +43,14 @@ tweetbar skips both. It drives the **Google Chrome you're already signed in to**
 
 ## Drafts from your work
 
-- Click **sources** to add the git repos you want drafts from. The list starts empty.
+- **GitHub** (on by default, needs the [`gh`](https://cli.github.com) CLI logged in): your commits in repos owned by your personal account, public and private. Organization repos are skipped, since that's usually your employer's code. GitHub search only covers default branches, so feature-branch work shows up once it's merged.
+- **Local repos:** click **sources** to add git repos on your machine, which also covers unpushed and feature-branch work. The list starts empty.
 - tweetbar checks for new commits hourly. **draft from my work** runs a pass on demand.
 - Drafts come from **your** commits (matched by your git `user.email`) and are written by the [Claude Code](https://claude.com/claude-code) CLI. You need `claude` installed and logged in; it uses your Claude login, not an API key.
 - You get at most one nudge a day, and only if you haven't posted yet.
 
 > [!WARNING]
-> Commit messages are sent to Claude, and the drafts are meant to be posted publicly. Only add personal or open-source repos, never your employer's.
+> Commit messages are sent to Claude, and the drafts are meant to be posted publicly. Only add personal or open-source repos, never your employer's. If your personal GitHub account owns repos you'd rather keep quiet about, turn GitHub off in **sources**.
 
 ## Agent API
 
@@ -88,6 +89,7 @@ All state lives in `~/Library/Application Support/tweetbar/`.
 - macOS and Google Chrome only.
 - It works through X's web UI, so a redesign of x.com can break it until the selectors are updated.
 - Text-only posts for now.
+- Tools that run their own hidden copy of Chrome (Remotion, Puppeteer, Playwright) are ignored: tweetbar finds your normal Chrome by process and only talks to that one.
 
 ## Development
 
